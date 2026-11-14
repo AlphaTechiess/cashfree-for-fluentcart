@@ -1,6 +1,6 @@
 # Cashfree Payments for FluentCart
 
-[![License: GPL v2+](https://img.shields.io/badge/License-GPL%20v2%2B-blue.svg)](https://www.gnu.org/licenses/gpl-2.0.html)
+[![License: GPL v3+](https://img.shields.io/badge/License-GPL%20v3%2B-blue.svg)](https://www.gnu.org/licenses/gpl-3.0.html)
 [![PHP Version](https://img.shields.io/badge/PHP-%3E%3D%207.4-8892BF.svg)](https://www.php.net/)
 [![FluentCart Compatibility](https://img.shields.io/badge/FluentCart-%3E%3D%201.0-6C2BD9.svg)](https://fluentcart.com/)
 [![Cashfree API Version](https://img.shields.io/badge/Cashfree%20API-2026--01--01-00B09B.svg)](https://www.cashfree.com/)
@@ -117,4 +117,4 @@ This plugin adheres to strict WordPress data hygiene standards. When deleted via
 
 ## 📄 License
 
-This plugin is licensed under the [GNU General Public License v2.0 or later](https://www.gnu.org/licenses/gpl-2.0.html).
+This plugin is licensed under the [GNU General Public License v3.0 or later](https://www.gnu.org/licenses/gpl-3.0.html).
