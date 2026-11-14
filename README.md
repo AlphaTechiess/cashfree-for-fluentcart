@@ -43,14 +43,14 @@ Accept one-time payments and recurring subscriptions seamlessly in **FluentCart*
 ## 🚀 Installation
 
 ### Option 1: WordPress Admin (Recommended)
-1. Download the latest `cashfree-fluentcart.zip` release from the [Releases](https://github.com/fluentcart/cashfree-fluentcart/releases) tab.
+1. Download the latest `cashfree.zip` release from the [Releases](https://github.com/fluentcart/cashfree-for-fluentcart/releases) tab.
 2. In your WordPress dashboard, navigate to **Plugins &rarr; Add New &rarr; Upload Plugin**.
 3. Choose the downloaded ZIP file and click **Install Now**.
 4. Click **Activate Plugin**.
 
 ### Option 2: Manual (FTP / SFTP)
-1. Extract `cashfree-fluentcart.zip`.
-2. Upload the `cashfree-fluentcart` folder to your server's `/wp-content/plugins/` directory.
+1. Extract `cashfree.zip`.
+2. Upload the `cashfree` folder to your server's `/wp-content/plugins/` directory.
 3. Activate the plugin via **Plugins &rarr; Installed Plugins** in your WordPress admin.
 
 ---
