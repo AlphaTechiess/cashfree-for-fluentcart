@@ -4,7 +4,7 @@ namespace CashfreePaymentsFC;
 if (!defined('ABSPATH')) exit;
 
 class API {
-    public const API_VERSION = '2025-01-01';
+    public const API_VERSION = '2026-01-01';
 
     private Settings $settings;
 

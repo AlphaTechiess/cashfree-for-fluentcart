@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: Cashfree Payments for FluentCart
- * Description: Production-grade Cashfree Payments gateway for FluentCart with embedded popup checkout, subscriptions, refunds, and zero-trust webhook verification.
+ * Description: Cashfree Payments gateway for FluentCart with embedded popup checkout, subscriptions, refunds, and zero-trust webhook verification.
  * Author: FluentCart Team
  * Author URI: https://fluentcart.com/about-us
  * Version: 1.0

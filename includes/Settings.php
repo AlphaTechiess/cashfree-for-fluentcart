@@ -44,6 +44,7 @@ class Settings extends BaseGatewaySettings {
             }
         }
 
+        if (isset($data['title'])) $data['title'] = sanitize_text_field(trim((string)$data['title']));
         if (isset($data['description'])) $data['description'] = sanitize_textarea_field(trim((string)$data['description']));
         if (isset($data['live_app_id'])) $data['live_app_id'] = sanitize_text_field(trim((string)$data['live_app_id']));
         if (isset($data['test_app_id'])) $data['test_app_id'] = sanitize_text_field(trim((string)$data['test_app_id']));
@@ -98,8 +99,11 @@ class Settings extends BaseGatewaySettings {
         if ($this->cachedWebhookUrl !== null) return $this->cachedWebhookUrl;
         if (class_exists(PaymentHelper::class)) {
             $listener = (new PaymentHelper('cashfree'))->listenerUrl();
-            if (!empty($listener['listener_url'])) return $this->cachedWebhookUrl = (string)$listener['listener_url'];
+            if (!empty($listener['listener_url'])) {
+                $raw = html_entity_decode((string)$listener['listener_url'], ENT_QUOTES, 'UTF-8');
+                return $this->cachedWebhookUrl = esc_url_raw($raw);
+            }
         }
-        return $this->cachedWebhookUrl = add_query_arg(['fluent-cart' => 'fct_payment_listener_ipn', 'method' => 'cashfree'], home_url('/'));
+        return $this->cachedWebhookUrl = esc_url_raw(add_query_arg(['fluent-cart' => 'fct_payment_listener_ipn', 'method' => 'cashfree'], home_url('/')));
     }
 }

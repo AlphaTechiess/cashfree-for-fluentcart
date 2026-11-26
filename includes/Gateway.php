@@ -71,27 +71,16 @@ class Gateway extends AbstractPaymentGateway {
     public function getWebhookInstructions(): array {
         return [
             'title'       => __('Webhook URL', 'cashfree-for-fluentcart'),
-            'webhook_url' => esc_url($this->settings->webhookUrl()),
+            'webhook_url' => esc_url_raw($this->settings->webhookUrl()),
             'description' => __('Configure this webhook URL in your Cashfree Dashboard.', 'cashfree-for-fluentcart'),
             'steps'       => [
                 'title' => __('How to configure?', 'cashfree-for-fluentcart'),
                 'list'  => [
-                    __('In your Cashfree Merchant Dashboard under Payment Gateway &rarr; Developers &rarr; Webhooks', 'cashfree-for-fluentcart'),
+                    __('In your Cashfree Merchant Dashboard under Payment Gateway → Developers → Webhooks', 'cashfree-for-fluentcart'),
                     /* translators: %s: Cashfree API version. */
                     sprintf(__('Click "Add Webhook", paste the Webhook URL above, and select API version %s', 'cashfree-for-fluentcart'), API::API_VERSION),
-                    __('Also add this Webhook URL under Subscriptions &rarr; Webhooks if using subscriptions', 'cashfree-for-fluentcart'),
-                ],
-            ],
-            'events'      => [
-                'title' => __('Required Webhook Events', 'cashfree-for-fluentcart'),
-                'list'  => [
-                    'PAYMENT_SUCCESS_WEBHOOK',
-                    'PAYMENT_FAILED_WEBHOOK',
-                    'PAYMENT_USER_DROPPED_WEBHOOK',
-                    'REFUND_STATUS_WEBHOOK',
-                    'SUBSCRIPTION_STATUS_CHANGED',
-                    'SUBSCRIPTION_PAYMENT_SUCCESS',
-                    'SUBSCRIPTION_PAYMENT_FAILED',
+                    __('Enable events: success payment, failed payment', 'cashfree-for-fluentcart'),
+                    __('Also add this Webhook URL under Subscriptions → Webhooks with events: subscription status changed, subscription payment success, subscription payment failed, subscription refund status, subscription payment cancelled. If you are selling a subscriptions, enable these events too.', 'cashfree-for-fluentcart'),
                 ],
             ],
         ];
@@ -145,6 +134,9 @@ class Gateway extends AbstractPaymentGateway {
     }
 
     public function getLocalizeData(): array {
+        $upiFile = CFFC_DIR . 'assets/upi.svg';
+        $upiUrl  = CFFC_URL . 'assets/upi.svg' . (file_exists($upiFile) ? '?v=' . filemtime($upiFile) : '');
+
         return [
             'fct_cashfree_data' => [
                 'app_id'        => $this->settings->appId(),
@@ -152,6 +144,7 @@ class Gateway extends AbstractPaymentGateway {
                 'checkout_type' => 'modal',
                 'ajax_url'      => admin_url('admin-ajax.php'),
                 'confirm_nonce' => wp_create_nonce('cffc_confirm'),
+                'upi_icon'      => esc_url_raw($upiUrl),
                 'translations'  => [
                     'Cards'                       => __('Cards', 'cashfree-for-fluentcart'),
                     'UPI'                         => __('UPI', 'cashfree-for-fluentcart'),
@@ -213,6 +206,46 @@ class Gateway extends AbstractPaymentGateway {
         return ($transaction && method_exists($transaction, 'getReceiptPageUrl')) ? (string)$transaction->getReceiptPageUrl() : home_url('/');
     }
 
+    private function extractPhoneFromRecord($record): string {
+        if (!$record) return '';
+
+        if (is_array($record)) {
+            $meta = $record['meta'] ?? null;
+            if (is_string($meta)) $meta = json_decode($meta, true);
+            $candidates = [
+                $record['phone'] ?? '',
+                is_array($meta) ? ($meta['other_data']['phone'] ?? ($meta['phone'] ?? ($meta['billing_phone'] ?? ''))) : '',
+            ];
+            foreach ($candidates as $val) {
+                $val = trim((string)$val);
+                if ($val !== '') return $val;
+            }
+            return '';
+        }
+
+        if (is_object($record)) {
+            try {
+                $direct = trim((string)$record->phone);
+                if ($direct !== '') return $direct;
+            } catch (\Throwable $e) {}
+
+            try {
+                $meta = $record->meta ?? null;
+                if (is_string($meta)) $meta = json_decode($meta, true);
+                elseif (is_object($meta)) $meta = (array)$meta;
+                if (is_array($meta)) {
+                    $other = is_object($meta['other_data'] ?? null) ? (array)$meta['other_data'] : ($meta['other_data'] ?? []);
+                    foreach ([$other['phone'] ?? '', $meta['phone'] ?? '', $meta['billing_phone'] ?? ''] as $val) {
+                        $val = trim((string)$val);
+                        if ($val !== '') return $val;
+                    }
+                }
+            } catch (\Throwable $e) {}
+        }
+
+        return '';
+    }
+
     private function resolveCustomerDetails($order): array {
         $order->loadMissing('customer', 'billing_address', 'shipping_address');
         $customer = $order->customer;
@@ -221,7 +254,27 @@ class Gateway extends AbstractPaymentGateway {
         $name = trim((string)($billing->name ?? ''));
         if (!$name && $customer) $name = trim((string)($customer->first_name ?? '') . ' ' . (string)($customer->last_name ?? ''));
         $email = sanitize_email((string)($customer->email ?? ($order->email ?? '')));
-        $rawPh = preg_replace('/[^0-9]/', '', (string)($billing->phone ?? ($customer->phone ?? '')));
+
+        $rawPhoneInput = '';
+        $sources       = [$order->billing_address, $order->shipping_address, $customer, $order];
+        if ($customer) {
+            try {
+                if (!empty($customer->primary_billing_address)) $sources[] = $customer->primary_billing_address;
+                if (!empty($customer->primary_shipping_address)) $sources[] = $customer->primary_shipping_address;
+            } catch (\Throwable $e) {}
+        }
+        foreach ($sources as $src) {
+            $rawPhoneInput = $this->extractPhoneFromRecord($src);
+            if ($rawPhoneInput !== '') break;
+        }
+        if ($rawPhoneInput === '') {
+            $userId = (int)($customer->user_id ?? ($order->user_id ?? 0));
+            if ($userId > 0) {
+                $rawPhoneInput = (string)(get_user_meta($userId, 'billing_phone', true) ?: get_user_meta($userId, 'phone', true));
+            }
+        }
+
+        $rawPh = preg_replace('/[^0-9]/', '', $rawPhoneInput);
         if (strlen($rawPh) === 12 && substr($rawPh, 0, 2) === '91') $rawPh = substr($rawPh, 2);
         elseif (strlen($rawPh) === 11 && $rawPh[0] === '0') $rawPh = substr($rawPh, 1);
 
@@ -697,10 +750,15 @@ class Gateway extends AbstractPaymentGateway {
 
     private function getHeaderValue(string $name): string {
         $serverKey = 'HTTP_' . strtoupper(str_replace('-', '_', $name));
-        if (!empty($_SERVER[$serverKey])) return trim(sanitize_text_field(wp_unslash($_SERVER[$serverKey])));
+        if (isset($_SERVER[$serverKey]) && is_string($_SERVER[$serverKey]) && $_SERVER[$serverKey] !== '') {
+            return trim(sanitize_text_field(wp_unslash($_SERVER[$serverKey])));
+        }
         if (function_exists('getallheaders')) {
             $headers = array_change_key_case((array)getallheaders(), CASE_LOWER);
-            if (!empty($headers[strtolower($name)])) return trim((string)$headers[strtolower($name)]);
+            $key     = strtolower($name);
+            if (isset($headers[$key]) && is_string($headers[$key]) && $headers[$key] !== '') {
+                return trim(sanitize_text_field(wp_unslash($headers[$key])));
+            }
         }
         return '';
     }
@@ -710,7 +768,7 @@ class Gateway extends AbstractPaymentGateway {
         $signature = trim($signature);
         if ($timestamp === '' || $raw === '' || $signature === '' || !ctype_digit($timestamp)) return false;
 
-        $tsSec  = strlen($timestamp) > 10 ? (int)($timestamp / 1000) : (int)$timestamp;
+        $tsSec  = strlen($timestamp) > 10 ? (int)(((int)$timestamp) / 1000) : (int)$timestamp;
         $maxAge = (int)apply_filters('cffc_webhook_max_age_seconds', 600);
         if ($maxAge > 0 && abs(time() - $tsSec) > $maxAge) return false;
 
@@ -741,6 +799,41 @@ class Gateway extends AbstractPaymentGateway {
             return new \WP_REST_Response(['status' => 'error', 'message' => $res->get_error_message()], (int)($res->get_error_data()['status'] ?? 400));
         }
         return new \WP_REST_Response(['status' => 'ok', 'message' => $res], 200);
+    }
+
+    private function syncRefundFromWebhook(array $refund, string $parentTransientKey): string {
+        $refundId = sanitize_text_field((string)($refund['cf_refund_id'] ?? ($refund['refund_id'] ?? ($refund['subRefundId'] ?? ''))));
+        $status   = strtoupper((string)($refund['refund_status'] ?? ($refund['refundStatus'] ?? '')));
+        if (!$refundId || !in_array($status, ['SUCCESS', 'FAILED', 'CANCELLED', 'CANCELED'], true)) {
+            return '';
+        }
+
+        $mapped      = ($status === 'SUCCESS') ? 'refunded' : 'failed';
+        $amountMinor = (int)round(((float)($refund['refund_amount'] ?? ($refund['refundAmount'] ?? 0))) * 100);
+        $refundTx    = OrderTransaction::query()->where('vendor_charge_id', $refundId)->first();
+        if ($refundTx) {
+            if ($refundTx->status !== 'refunded') $refundTx->status = $mapped;
+            if ($amountMinor > 0 && empty($refundTx->total)) $refundTx->total = $amountMinor;
+            $refundTx->save();
+            return 'Refund updated to ' . $mapped . '.';
+        }
+
+        if ($parentTransientKey && ($txUuid = (string)get_transient($parentTransientKey))) {
+            $parent = OrderTransaction::query()->where('uuid', $txUuid)->first();
+            if ($parent) {
+                Refund::createOrRecordRefund([
+                    'vendor_charge_id'    => $refundId,
+                    'payment_method'      => 'cashfree',
+                    'payment_method_type' => (string)($parent->payment_method_type ?: 'cashfree'),
+                    'payment_mode'        => $parent->payment_mode ?? $this->settings->getMode(),
+                    'status'              => $mapped,
+                    'total'               => $amountMinor,
+                ], $parent);
+                return 'Refund recorded as ' . $mapped . '.';
+            }
+        }
+
+        return '';
     }
 
     private function processWebhookRequest(string $raw, string $signature, string $timestamp) {
@@ -795,33 +888,9 @@ class Gateway extends AbstractPaymentGateway {
             }
         } elseif ($event === 'REFUND_STATUS_WEBHOOK') {
             $refund    = is_array($data['refund'] ?? null) ? $data['refund'] : [];
-            $refundId  = sanitize_text_field((string)($refund['cf_refund_id'] ?? ($refund['refund_id'] ?? '')));
             $cfOrderId = sanitize_text_field((string)($refund['order_id'] ?? ''));
-            $status    = strtoupper((string)($refund['refund_status'] ?? ''));
-            if ($refundId && in_array($status, ['SUCCESS', 'FAILED', 'CANCELLED'], true)) {
-                $mapped      = ($status === 'SUCCESS') ? 'refunded' : 'failed';
-                $amountMinor = (int)round(((float)($refund['refund_amount'] ?? 0)) * 100);
-                $refundTx    = OrderTransaction::query()->where('vendor_charge_id', $refundId)->first();
-                if ($refundTx) {
-                    if ($refundTx->status !== 'refunded') $refundTx->status = $mapped;
-                    if ($amountMinor > 0 && empty($refundTx->total)) $refundTx->total = $amountMinor;
-                    $refundTx->save();
-                    $msg = 'Refund updated to ' . $mapped . '.';
-                } elseif ($cfOrderId && ($txUuid = (string)get_transient('cffc_tx_order_' . md5($cfOrderId)))) {
-                    $parent = OrderTransaction::query()->where('uuid', $txUuid)->first();
-                    if ($parent) {
-                        Refund::createOrRecordRefund([
-                            'vendor_charge_id'    => $refundId,
-                            'payment_method'      => 'cashfree',
-                            'payment_method_type' => (string)($parent->payment_method_type ?: 'cashfree'),
-                            'payment_mode'        => $parent->payment_mode ?? $this->settings->getMode(),
-                            'status'              => $mapped,
-                            'total'               => $amountMinor,
-                        ], $parent);
-                        $msg = 'Refund recorded as ' . $mapped . '.';
-                    }
-                }
-            }
+            $parentKey = $cfOrderId ? 'cffc_tx_order_' . md5($cfOrderId) : '';
+            $msg       = $this->syncRefundFromWebhook($refund, $parentKey) ?: $msg;
         } elseif (strpos($event, 'SUBSCRIPTION_') === 0) {
             $subDetails = is_array($data['subscription_details'] ?? null) ? $data['subscription_details'] : $data;
             $cfSubId    = sanitize_text_field((string)($subDetails['subscription_id'] ?? ''));
@@ -842,6 +911,22 @@ class Gateway extends AbstractPaymentGateway {
                     }
                     $this->syncLocalSubscriptionStatus($cfSubId, 'active');
                     $msg = 'Subscription payment synced.';
+                } elseif (in_array($event, ['SUBSCRIPTION_PAYMENT_FAILED', 'SUBSCRIPTION_PAYMENT_CANCELLED'], true)) {
+                    if ($txUuid = (string)get_transient('cffc_tx_sub_' . md5($cfSubId))) {
+                        $tx = OrderTransaction::query()->where('uuid', $txUuid)->first();
+                        if ($tx && $tx->status !== 'succeeded') {
+                            $tx->status = 'failed';
+                            $tx->save();
+                            if ($order = Order::find($tx->order_id)) {
+                                try { (new StatusHelper($order))->syncOrderStatuses($tx); } catch (\Throwable $e) {}
+                            }
+                        }
+                    }
+                    $this->syncLocalSubscriptionStatus($cfSubId, 'failing');
+                    $msg = 'Subscription payment failure synced.';
+                } elseif (in_array($event, ['SUBSCRIPTION_REFUND_STATUS', 'SUBSCRIPTION_REFUND_STATUS_WEBHOOK'], true)) {
+                    $refund = is_array($data['refund'] ?? null) ? $data['refund'] : $data;
+                    $msg    = $this->syncRefundFromWebhook($refund, 'cffc_tx_sub_' . md5($cfSubId)) ?: $msg;
                 }
             }
         }
