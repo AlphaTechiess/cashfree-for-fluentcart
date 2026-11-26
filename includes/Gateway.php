@@ -11,7 +11,6 @@ use FluentCart\App\Models\Subscription;
 use FluentCart\App\Modules\PaymentMethods\Core\AbstractPaymentGateway;
 use FluentCart\App\Services\Payments\PaymentInstance;
 use FluentCart\App\Services\Payments\Refund;
-use FluentCart\App\Services\Subscription\SubscriptionRenewal;
 
 class Gateway extends AbstractPaymentGateway {
     public array $supportedFeatures = ['payment', 'refund', 'webhook', 'subscriptions', 'system_subscription'];
